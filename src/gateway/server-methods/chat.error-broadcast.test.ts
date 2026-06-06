@@ -1,3 +1,5 @@
+// Chat error broadcast tests ensure chat.send failures still respond and emit
+// error-state broadcasts for connected UI clients.
 import { describe, expect, it, vi } from "vitest";
 import { chatHandlers } from "./chat.js";
 import type { GatewayRequestContext } from "./types.js";
@@ -60,6 +62,15 @@ describe("chat.send error broadcast", () => {
         runId: "test-run-1",
         state: "error",
         errorMessage: expect.stringContaining("LLM timeout"),
+        message: expect.objectContaining({
+          role: "assistant",
+          content: [
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining("LLM timeout"),
+            }),
+          ],
+        }),
       }),
     );
   });
@@ -109,6 +120,15 @@ describe("chat.send error broadcast", () => {
       expect.objectContaining({
         agentId: "main",
         state: "error",
+        message: expect.objectContaining({
+          role: "assistant",
+          content: [
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining("LLM timeout"),
+            }),
+          ],
+        }),
       }),
     );
   });

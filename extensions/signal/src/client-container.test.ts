@@ -1,3 +1,4 @@
+// Signal tests cover client container plugin behavior.
 import * as fetchModule from "openclaw/plugin-sdk/fetch-runtime";
 import { MAX_TIMER_TIMEOUT_MS } from "openclaw/plugin-sdk/number-runtime";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -846,6 +847,7 @@ describe("containerSendReaction", () => {
       emoji: "👍",
       targetAuthor: "+15550001111",
       targetTimestamp: 1699999999999,
+      groupId: "group-123",
     });
 
     expect(result).toEqual({ timestamp: 1700000000000 });
@@ -856,29 +858,9 @@ describe("containerSendReaction", () => {
         reaction: "👍",
         target_author: "+15550001111",
         timestamp: 1699999999999,
+        group_id: "group-123",
       }),
     );
-  });
-
-  it("includes group_id when provided", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({}),
-    });
-
-    await containerSendReaction({
-      baseUrl: "http://localhost:8080",
-      account: "+14259798283",
-      recipient: "+15550001111",
-      emoji: "❤️",
-      targetAuthor: "+15550001111",
-      targetTimestamp: 1699999999999,
-      groupId: "group-123",
-    });
-
-    const body = parseFetchBody();
-    expect(body.group_id).toBe("group-123");
   });
 });
 
@@ -933,6 +915,7 @@ describe("containerRemoveReaction", () => {
       emoji: "👍",
       targetAuthor: "+15550001111",
       targetTimestamp: 1699999999999,
+      groupId: "group-123",
     });
 
     expect(result).toEqual({ timestamp: 1700000000000 });
@@ -946,28 +929,8 @@ describe("containerRemoveReaction", () => {
         reaction: "👍",
         target_author: "+15550001111",
         timestamp: 1699999999999,
+        group_id: "group-123",
       }),
     );
-  });
-
-  it("includes group_id when provided", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({}),
-    });
-
-    await containerRemoveReaction({
-      baseUrl: "http://localhost:8080",
-      account: "+14259798283",
-      recipient: "+15550001111",
-      emoji: "❤️",
-      targetAuthor: "+15550001111",
-      targetTimestamp: 1699999999999,
-      groupId: "group-123",
-    });
-
-    const body = parseFetchBody();
-    expect(body.group_id).toBe("group-123");
   });
 });

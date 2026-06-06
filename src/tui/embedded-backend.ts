@@ -1,3 +1,4 @@
+// Implements the embedded backend used by local TUI sessions.
 import { randomUUID } from "node:crypto";
 import type { SessionsPatchResult } from "../../packages/gateway-protocol/src/index.js";
 import { agentCommandFromIngress } from "../agents/agent-command.js";
@@ -48,6 +49,8 @@ import { loadGatewayModelCatalog } from "../gateway/server-model-catalog.js";
 import { performGatewaySessionReset } from "../gateway/session-reset-service.js";
 import { capArrayByJsonBytes } from "../gateway/session-utils.fs.js";
 import {
+  buildGatewaySessionInfo,
+  getSessionDefaults,
   listAgentsForGateway,
   listSessionsFromStoreAsync,
   loadCombinedSessionStoreForGateway,
@@ -405,7 +408,10 @@ export class EmbeddedTuiBackend implements TuiBackend {
 
   async loadHistory(opts: { sessionKey: string; agentId?: string; limit?: number }) {
     const loadOptions = opts.agentId ? { agentId: opts.agentId } : undefined;
-    const { cfg, storePath, entry } = loadSessionEntry(opts.sessionKey, loadOptions);
+    const { cfg, storePath, store, entry, canonicalKey } = loadSessionEntry(
+      opts.sessionKey,
+      loadOptions,
+    );
     const sessionId = entry?.sessionId;
     const sessionAgentId = resolveSessionAgentId({
       sessionKey: opts.sessionKey,
@@ -455,13 +461,27 @@ export class EmbeddedTuiBackend implements TuiBackend {
       });
     }
 
+    const defaults = getSessionDefaults(cfg, undefined, { allowPluginNormalization: false });
+    const sessionInfo = buildGatewaySessionInfo({
+      cfg,
+      storePath,
+      store,
+      key: canonicalKey,
+      entry,
+      agentId: opts.agentId,
+    });
+    sessionInfo.thinkingLevel = thinkingLevel;
+    sessionInfo.verboseLevel = entry?.verboseLevel ?? cfg.agents?.defaults?.verboseDefault;
+
     return {
       sessionKey: opts.sessionKey,
       sessionId,
       messages,
+      defaults,
+      sessionInfo,
       thinkingLevel,
       fastMode: entry?.fastMode,
-      verboseLevel: entry?.verboseLevel ?? cfg.agents?.defaults?.verboseDefault,
+      verboseLevel: sessionInfo.verboseLevel,
     };
   }
 
@@ -539,7 +559,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
     if (!result.ok) {
       throw new Error(result.error.message);
     }
-    return { ok: true, key: result.key, entry: result.entry };
+    return { ok: true as const, key: result.key, entry: result.entry };
   }
 
   async getGatewayStatus() {
