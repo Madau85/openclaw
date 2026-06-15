@@ -3,10 +3,20 @@ import SwiftUI
 
 extension SettingsProTab {
     var settingsHeader: some View {
-        Text("Settings")
-            .font(.system(size: 28, weight: .bold))
-            .padding(.horizontal, OpenClawProMetric.pagePadding)
-            .padding(.top, 6)
+        OpenClawAdaptiveHeaderRow(
+            title: "Settings",
+            subtitle: "Gateway, permissions, voice, and device controls.",
+            titleFont: .title3.weight(.semibold),
+            subtitleFont: .callout)
+        {
+            if let headerLeadingAction {
+                OpenClawSidebarHeaderLeadingSlot(action: headerLeadingAction)
+            }
+        } accessory: {
+            EmptyView()
+        }
+        .padding(.horizontal, OpenClawProMetric.pagePadding)
+        .padding(.top, 6)
     }
 
     var appearanceSection: some View {
@@ -60,14 +70,14 @@ extension SettingsProTab {
         HStack(spacing: 12) {
             ProIconBadge(
                 systemName: "antenna.radiowaves.left.and.right",
-                color: self.gatewayConnected ? OpenClawBrand.ok : .secondary)
+                color: self.gatewayStatusColor)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Connection")
                     .font(.subheadline.weight(.semibold))
-                Text(self.gatewayConnected ? "Connected" : self.appModel.gatewayDisplayStatusText)
+                Text(self.gatewayStatusDetail)
                     .font(.caption)
-                    .foregroundStyle(self.gatewayConnected ? OpenClawBrand.ok : .secondary)
+                    .foregroundStyle(self.gatewayStatusColor)
             }
 
             Spacer(minLength: 8)
@@ -100,7 +110,8 @@ extension SettingsProTab {
                 title: "Reconnect",
                 icon: "arrow.triangle.2.circlepath",
                 color: OpenClawBrand.warn,
-                isBusy: self.isReconnectingGateway)
+                isBusy: self.isReconnectingGateway,
+                isDisabled: self.appModel.isAppleReviewDemoModeEnabled)
             {
                 Task { await self.reconnectGateway() }
             }
@@ -130,6 +141,11 @@ extension SettingsProTab {
                 title: "Permissions",
                 detail: self.permissionsDetail,
                 route: .permissions)
+            self.settingsListRow(
+                icon: "point.3.connected.trianglepath.dotted",
+                title: "Channels / Integrations",
+                detail: "Message routing and external channel clients.",
+                route: .channels)
             self.settingsListRow(
                 icon: "waveform",
                 title: "Voice & Talk",
@@ -198,6 +214,9 @@ extension SettingsProTab {
             OpenClawProBackground()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    if self.headerLeadingAction != nil {
+                        self.routeHeader(for: route)
+                    }
                     switch route {
                     case .gateway:
                         self.gatewayDestination
@@ -205,6 +224,8 @@ extension SettingsProTab {
                         self.approvalsDestination
                     case .permissions:
                         self.permissionsDestination
+                    case .channels:
+                        SettingsChannelsDestination()
                     case .voice:
                         self.voiceDestination
                     case .diagnostics:
@@ -223,6 +244,24 @@ extension SettingsProTab {
         }
         .navigationTitle(self.title(for: route))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(self.headerLeadingAction == nil ? .visible : .hidden, for: .navigationBar)
+    }
+
+    func routeHeader(for route: SettingsRoute) -> some View {
+        OpenClawAdaptiveHeaderRow(
+            title: self.title(for: route),
+            subtitle: self.subtitle(for: route),
+            titleFont: .title3.weight(.semibold),
+            subtitleFont: .callout)
+        {
+            if let headerLeadingAction {
+                OpenClawSidebarHeaderLeadingSlot(action: headerLeadingAction)
+            }
+        } accessory: {
+            EmptyView()
+        }
+        .padding(.horizontal, OpenClawProMetric.pagePadding)
+        .padding(.top, 6)
     }
 
     var gatewayDestination: some View {
@@ -234,9 +273,9 @@ extension SettingsProTab {
             self.detailStatusCard(
                 icon: "antenna.radiowaves.left.and.right",
                 title: "Gateway",
-                detail: self.gatewayConnected ? "Connected" : self.appModel.gatewayDisplayStatusText,
-                value: self.gatewayConnected ? "online" : "offline",
-                color: self.gatewayConnected ? OpenClawBrand.ok : .secondary)
+                detail: self.gatewayStatusDetail,
+                value: self.gatewayStatusValue,
+                color: self.gatewayStatusColor)
 
             self.detailListCard {
                 self.detailRow("Address", value: self.gatewayAddress)
@@ -335,8 +374,7 @@ extension SettingsProTab {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("No approvals waiting")
                                 .font(.subheadline.weight(.semibold))
-                            Text(self
-                                .gatewayConnected ? "Gateway requests will appear here." : "Connect to the gateway.")
+                            Text(self.approvalEmptyDetail)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
@@ -390,7 +428,7 @@ extension SettingsProTab {
                 title: "Health Check",
                 detail: "Run app, permission, and gateway-adjacent checks without editing setup.",
                 value: self.diagnosticsHealthValue,
-                color: self.gatewayConnected ? OpenClawBrand.ok : OpenClawBrand.warn)
+                color: self.gatewayDiagnosticConnected ? OpenClawBrand.ok : OpenClawBrand.warn)
 
             ProCard(radius: SettingsLayout.cardRadius) {
                 self.gatewayActionButton(
@@ -504,6 +542,7 @@ extension SettingsProTab {
         icon: String,
         color: Color,
         isBusy: Bool,
+        isDisabled: Bool = false,
         action: @escaping () -> Void) -> some View
     {
         Button(action: action) {
@@ -525,7 +564,7 @@ extension SettingsProTab {
             }
         }
         .buttonStyle(.plain)
-        .disabled(isBusy)
+        .disabled(isBusy || isDisabled)
     }
 
     func toggleCard(
@@ -764,8 +803,13 @@ extension SettingsProTab {
                     self.appModel.setVoiceWakeEnabled(enabled)
                 }
                 self.settingsToggle("Talk Mode", isOn: self.$talkEnabled) { enabled in
+                    guard !self.appModel.isAppleReviewDemoModeEnabled else {
+                        self.talkEnabled = false
+                        return
+                    }
                     self.appModel.setTalkEnabled(enabled)
                 }
+                .disabled(self.appModel.isAppleReviewDemoModeEnabled)
                 Picker("Speech Language", selection: self.$talkSpeechLocale) {
                     ForEach(TalkSpeechLocale.supportedOptions()) { option in
                         Text(option.label).tag(option.id)
@@ -786,26 +830,44 @@ extension SettingsProTab {
     }
 
     var talkVoiceSettingsCard: some View {
-        ProCard(radius: SettingsLayout.cardRadius) {
-            VStack(alignment: .leading, spacing: 12) {
-                Picker("Provider", selection: self.talkProviderSelectionBinding) {
-                    ForEach(TalkModeProviderSelection.allCases) { option in
-                        Text(option.label).tag(option.rawValue)
-                    }
-                }
-                if self.shouldShowRealtimeVoicePicker {
-                    Picker("Realtime Voice", selection: self.talkRealtimeVoiceSelectionBinding) {
-                        Text("Gateway Default").tag("")
-                        ForEach(TalkModeRealtimeVoiceSelection.voices, id: \.self) { voice in
-                            Text(TalkModeRealtimeVoiceSelection.label(for: voice)).tag(voice)
+        VStack(alignment: .leading, spacing: 10) {
+            if self.gatewayConnected,
+               let issue = self.appModel.talkMode.gatewayTalkCurrentFallbackIssue
+            {
+                TalkRuntimeIssueBanner(
+                    issue: issue,
+                    onOpenSettings: nil,
+                    onShowDetails: {
+                        self.showTalkIssueDetails = true
+                    })
+            }
+            ProCard(radius: SettingsLayout.cardRadius) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Provider", selection: self.talkProviderSelectionBinding) {
+                        ForEach(TalkModeProviderSelection.allCases) { option in
+                            Text(option.label).tag(option.rawValue)
                         }
                     }
+                    if self.shouldShowRealtimeVoicePicker {
+                        Picker("Realtime Voice", selection: self.talkRealtimeVoiceSelectionBinding) {
+                            Text("Gateway Default").tag("")
+                            ForEach(TalkModeRealtimeVoiceSelection.voices, id: \.self) { voice in
+                                Text(TalkModeRealtimeVoiceSelection.label(for: voice)).tag(voice)
+                            }
+                        }
+                    }
+                    self.detailRow("Voice Mode", value: self.appModel.talkMode.gatewayTalkVoiceModeTitle)
+                    Divider()
+                    self.detailRow("Active Voice", value: self.gatewayTalkActiveVoiceDetail)
+                    if let issue = self.gatewayTalkLastIssueDetail {
+                        Divider()
+                        self.detailRow("Last Voice Issue", value: issue)
+                    }
+                    Divider()
+                    self.detailRow("Transport", value: self.appModel.talkMode.gatewayTalkTransportLabel)
+                    Divider()
+                    self.detailRow("API Key", value: self.talkApiKeyStatus)
                 }
-                self.detailRow("Voice Mode", value: self.appModel.talkMode.gatewayTalkVoiceModeTitle)
-                Divider()
-                self.detailRow("Transport", value: self.appModel.talkMode.gatewayTalkTransportLabel)
-                Divider()
-                self.detailRow("API Key", value: self.talkApiKeyStatus)
             }
         }
         .padding(.horizontal, OpenClawProMetric.pagePadding)
